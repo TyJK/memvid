@@ -37,8 +37,6 @@ except ImportError as e:
 
 def format_size(bytes_size):
     """Format file size in human readable format."""
-    if bytes_size == 0:
-        return "0 B"
     for unit in ['B', 'KB', 'MB', 'GB']:
         if bytes_size < 1024.0:
             return f"{bytes_size:.1f} {unit}"
@@ -193,8 +191,7 @@ def test_codec(encoder, codec, name_stem, output_dir):
     # Determine file extension from full codec mapping - FIXED
     file_ext = codec_parameters[codec]["video_file_type"]
 
-    # FIX: Add missing dot before extension
-    output_path = output_dir / f"{name_stem}_{codec}.{file_ext}"
+    output_path = output_dir / f"{name_stem}_{codec}{file_ext}"
     index_path = output_dir / f"{name_stem}_{codec}.json"
 
     start_time = time.time()
@@ -210,26 +207,7 @@ def test_codec(encoder, codec, name_stem, output_dir):
         )
 
         encoding_time = time.time() - start_time
-
-        # Check if file was actually created and has content
-        if output_path.exists():
-            file_size = output_path.stat().st_size
-        else:
-            print(f"   ❌ Output file was not created: {output_path}")
-            return {
-                'success': False,
-                'codec': codec,
-                'error': "Output file was not created"
-            }
-
-        # Check for zero-byte files
-        if file_size == 0:
-            print(f"   ❌ Zero-byte file created - encoding failed")
-            return {
-                'success': False,
-                'codec': codec,
-                'error': "Zero-byte file created"
-            }
+        file_size = output_path.stat().st_size
 
         result = {
             'success': True,
@@ -283,7 +261,7 @@ def run_multi_codec_comparison(encoder, data_info, codecs, output_dir="output"):
     return results
 
 def print_comparison_table(data_info, results, codecs):
-    """Print detailed comparison table - FIXED zero division"""
+    """Print detailed comparison table"""
 
     print(f"\n📊 MULTI-CODEC COMPARISON RESULTS")
     print("=" * 80)
@@ -295,7 +273,6 @@ def print_comparison_table(data_info, results, codecs):
 
     print(f"📋 Content: {data_info['chunks']} chunks, {format_size(data_info['total_chars'])} characters")
     print()
-
     # Prepare table data
     successful_results = [(codec, result) for codec, result in results.items() if result['success']]
     failed_results = [(codec, result) for codec, result in results.items() if not result['success']]
@@ -308,54 +285,50 @@ def print_comparison_table(data_info, results, codecs):
 
         # Sort by file size (smallest first)
         successful_results.sort(key=lambda x: x[1]['file_size'])
-
-        # FIX: Handle zero baseline size
-        baseline_size = successful_results[0][1]['file_size'] if successful_results else 1
-        if baseline_size == 0:
-            baseline_size = 1  # Avoid division by zero
+        baseline_size = successful_results[0][1]['file_size']  # Smallest file as baseline
 
         for codec, result in successful_results:
             size_str = format_size(result['file_size'])
-            chunks_per_mb = f"{result['chunks_per_mb']:.0f}" if result['chunks_per_mb'] > 0 else "N/A"
+            chunks_per_mb = f"{result['chunks_per_mb']:.0f}"
             time_str = f"{result['encoding_time']:.1f}s"
             backend = result['backend']
-            ratio = result['file_size'] / baseline_size if baseline_size > 0 else 1.0
+            ratio = result['file_size'] / baseline_size
             ratio_str = f"{ratio:.1f}x" if ratio != 1.0 else "baseline"
 
             print(f"{codec:<8} {backend:<12} {size_str:<12} {chunks_per_mb:<10} {time_str:<8} {ratio_str:<8}")
 
-        # Find the best compression ratio and best speed - with safety checks
-        if successful_results:
-            best_compression = min(successful_results, key=lambda x: x[1]['file_size'])
-            fastest = min(successful_results, key=lambda x: x[1]['encoding_time'])
+        # Find the best compression ratio and best speed
+        best_compression = min(successful_results, key=lambda x: x[1]['file_size'])
+        fastest = min(successful_results, key=lambda x: x[1]['encoding_time'])
 
-            print()
-            print(f"🏆 Best Compression: {best_compression[0].upper()} ({format_size(best_compression[1]['file_size'])})")
-            print(f"⚡ Fastest Encoding: {fastest[0].upper()} ({fastest[1]['encoding_time']:.1f}s)")
+        print()
+        print(f"🏆 Best Compression: {best_compression[0].upper()} ({format_size(best_compression[1]['file_size'])})")
+        print(f"⚡ Fastest Encoding: {fastest[0].upper()} ({fastest[1]['encoding_time']:.1f}s)")
 
-            # Calculate storage efficiency
-            total_chunks = data_info['chunks']
-            print(f"\n💾 Storage Efficiency (chunks per MB):")
-            print(f"📦 Total chunks in dataset: {total_chunks}")
+        # Calculate storage efficiency
+        total_chunks = data_info['chunks']
+        print(f"\n💾 Storage Efficiency (chunks per MB):")
+        print(f"📦 Total chunks in dataset: {total_chunks}")
 
-            storage_efficiency = []
-            for codec, result in successful_results:
-                # Get file size in MB
-                file_size_mb = result['file_size'] / (1024 * 1024)  # Convert bytes to MB
+        storage_efficiency = []
+        for codec, result in successful_results:
+            # Get file size in MB
+            file_size_mb = result['file_size'] / (1024 * 1024)  # Convert bytes to MB
 
-                # Calculate chunks per MB
-                chunks_per_mb = total_chunks / file_size_mb if file_size_mb > 0 else 0
+            # Calculate chunks per MB
+            chunks_per_mb = total_chunks / file_size_mb if file_size_mb > 0 else 0
 
-                storage_efficiency.append((codec, chunks_per_mb, file_size_mb))
-                print(f"   {codec.upper()}: {chunks_per_mb:.1f} chunks/MB ({file_size_mb:.1f} MB total)")
+            storage_efficiency.append((codec, chunks_per_mb, file_size_mb))
+            print(f"   {codec.upper()}: {chunks_per_mb:.1f} chunks/MB ({file_size_mb:.1f} MB total)")
 
-            # Sort by efficiency (highest chunks per MB first)
-            storage_efficiency.sort(key=lambda x: x[1], reverse=True)
+        # Sort by efficiency (highest chunks per MB first)
+        storage_efficiency.sort(key=lambda x: x[1], reverse=True)
 
-            print(f"\n🏆 Storage Efficiency Ranking:")
-            for i, (codec, chunks_per_mb, file_size_mb) in enumerate(storage_efficiency, 1):
-                efficiency_vs_best = chunks_per_mb / storage_efficiency[0][1] if storage_efficiency[0][1] > 0 else 0
-                print(f"   {i}. {codec.upper()}: {chunks_per_mb:.1f} chunks/MB ({efficiency_vs_best:.1%} of best)")
+        print(f"\n🏆 Storage Efficiency Ranking:")
+        for i, (codec, chunks_per_mb, file_size_mb) in enumerate(storage_efficiency, 1):
+            efficiency_vs_best = chunks_per_mb / storage_efficiency[0][1] if storage_efficiency[0][1] > 0 else 0
+            print(f"   {i}. {codec.upper()}: {chunks_per_mb:.1f} chunks/MB ({efficiency_vs_best:.1%} of best)")
+
 
     if failed_results:
         print(f"\n❌ FAILED ENCODINGS:")

@@ -2,7 +2,7 @@ qrcode[pil]==8.2
 opencv-python==4.11.0.86
 opencv-contrib-python==4.11.0.86
 sentence-transformers==4.1.0
-numpy==1.26.4
+numpy==2.2.6
 tqdm==4.67.1
 faiss-cpu==1.7.4
 Pillow==11.2.1
